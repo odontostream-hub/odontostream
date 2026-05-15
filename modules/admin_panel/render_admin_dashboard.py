@@ -102,8 +102,8 @@ def render_admin_dashboard():
                 "DNI": ["45678912", "38456123", "32789456"],
                 "Teléfono": ["1122334455", "1165432109", "1198765432"],
                 "Obra Social": ["Particular", "OSDE 310", "SMG"],
-                "Historia Clínica": ["Implante programado", "Ortodoncia activa", "Limpieza anual realizada (Próxima revisión: Noviembre 2026)"]
-            }
+                "Historia Clínica": ["Implante programado", "Ortodoncia activa", "Limpieza anual realizada (Próxima revisión: Noviembre 2026)"]       
+                }
             df_respaldo = pd.DataFrame(datos_pacientes)
             st.dataframe(df_respaldo, use_container_width=True)
         
@@ -293,3 +293,102 @@ def render_admin_dashboard():
                 st.success(f"+ ${ganancia_neta_odontologo:,.2f} ARS")
                 
                 st.caption("ℹ️ El cobro de la seña o el total del turno se procesará automáticamente por Mercado Pago al momento de la reserva del paciente.")
+
+                # --- NUEVA SECCIÓN: HISTORIAL DE PAGOS Y ESTADO DE CONEXIÓN ---
+                st.divider()
+                
+                col_historial, col_estado_mp = st.columns([2, 1])
+
+                with col_historial:
+                    st.markdown("### 📜 Historial de Cobros Recientes")
+                    try:
+                        # Buscamos en la tabla de 'pagos' (asegurate de que se llame así en Supabase)
+                        res_pagos = supabase.table("pagos").select("*").eq("odontologo_id", odontologo_actual_id).order("created_at", desc=True).limit(10).execute()
+                        
+                        if res_pagos.data:
+                            df_pagos = pd.DataFrame(res_pagos.data)
+                            # Ponemos nombres lindos a las columnas para el doctor
+                            df_pagos = df_pagos.rename(columns={
+                                "monto_total": "Monto ($)",
+                                "comision_monto": "Comisión ($)",
+                                "estado": "Estado",
+                                "created_at": "Fecha"
+                            })
+                            st.dataframe(df_pagos[["Fecha", "Monto ($)", "Comisión ($)", "Estado"]], use_container_width=True)
+                        else:
+                            st.info("Aún no se registran cobros procesados por el Chatbot.")
+                    except Exception:
+                        st.info("El historial de cobros se activará cuando recibas tu primer pago.")
+
+                with col_estado_mp:
+                    st.markdown("### Conexión Mercado Pago")
+        
+        # --- NUEVA SECCIÓN DE AYUDA ---
+        with st.expander("❓ ¿Cómo consigo mi Access Token?"):
+            st.write("Mirá este video tutorial rápido de 2 minutos:")
+            st.video("https://www.youtube.com/watch?v=gkdZRFJoaNA")
+            st.info("Recordá usar el 'Access Token' de Producción para recibir pagos reales.")
+
+        # Verificamos si ya existe una conexión para cambiar el texto del botón
+        cuenta_vinculada = False
+        try:
+            check_mp = supabase.table("credenciales_mercadopago").select("*").eq("user_id", st.session_state.get("odontologo_id")).execute()
+            if check_mp.data:
+                cuenta_vinculada = True
+        except:
+            pass
+
+        # 1. Entrada de texto
+        nuevo_token = st.text_input("Pegá tu Access Token de Mercado Pago:", type="password")
+        
+        # 2. El botón cambia de nombre según el estado
+        texto_boton = "🔄 Actualizar Credenciales" if cuenta_vinculada else "🔗 Vincular Mercado Pago"
+        
+        if st.button(texto_boton):
+            if nuevo_token:
+                try:
+                    # Usamos la función optimizada de database.py
+                    from Core.database import guardar_credenciales_mp
+                    res = guardar_credenciales_mp(
+                        user_id=st.session_state.get("odontologo_id"),
+                        mp_access_token=nuevo_token
+                    )
+                    
+                    if res:
+                        st.success("✅ ¡Cuenta vinculada/actualizada con éxito!")
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Error al guardar: {e}")
+            else:
+                st.warning("Por favor, poné un token válido antes de apretar el botón.")
+
+        # 3. Cartel de estado visual
+        if cuenta_vinculada:
+            st.info("🟢 Tu cuenta está vinculada correctamente.")
+        else:
+            st.warning("🔴 Tu cuenta no está vinculada. Usá el botón de arriba.")
+
+# --- ESTO VA AL FINAL DE TODO EL ARCHIVO ---
+    st.markdown("---") 
+    
+    with st.expander("⚙️ Configuración Avanzada"):
+        st.subheader("Borrar Cuenta")
+        st.write("⚠️ Al eliminar tu cuenta, se borrarán todos tus datos permanentemente de Odonto-Stream.")
+        
+        confirmar_accion = st.checkbox("Confirmo que deseo eliminar todos mis datos.")
+        
+        if st.button("❌ Eliminar mi cuenta permanentemente", type="primary"):
+            if confirmar_accion:
+                try:
+                    from Core.database import eliminar_cuenta_completa
+                    exito, mensaje = eliminar_cuenta_completa(st.session_state.odontologo_id)
+                    if exito:
+                        st.success("Cuenta eliminada.")
+                        st.session_state.clear()
+                        st.rerun()
+                    else:
+                        st.error(mensaje)
+                except Exception as e:
+                    st.error(f"Error: {e}")
+            else:
+                st.warning("Debes marcar la casilla para confirmar.")

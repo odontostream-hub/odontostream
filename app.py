@@ -4,6 +4,16 @@ import base64
 import streamlit as st
 import pandas as pd
 import datetime
+import mercadopago
+
+# --- INICIALIZACIÓN DE MERCADO PAGO ---
+# Usamos session_state para que el estado de conexión sea visible en toda la app
+if "mp_conectado" not in st.session_state:
+    try:
+        sdk = mercadopago.SDK(st.secrets["MP_ACCESS_TOKEN"])
+        st.session_state.mp_conectado = True
+    except Exception as e:
+        st.session_state.mp_conectado = False
 
 # --- IMPORTACIONES SINCRONIZADAS ---
 from Core.ai_engine import DentalAI
@@ -22,20 +32,32 @@ st.set_page_config(
     layout="wide", 
     page_icon="🦷"
 )
+st.markdown("""
+    <style>
+    /* Chau al botón rojo y al texto de abajo */
+    footer {visibility: hidden;}
+    
+    /* Chau al botón de 'Deploy' que aparece arriba a veces */
+    .stAppDeployButton {display: none;}
+    
+    /* Chau a la barra de arriba para que no robe espacio */
+    header {visibility: hidden;}
+    
+    /* Ajuste para que el contenido empiece bien arriba */
+    .block-container {
+        padding-top: 0rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 # --- LÓGICA DE CAPTURA DE TOKEN DE GOOGLE (PUENTE) ---
-# Ponemos esto aquí arriba para que atrape el código apenas cargue la página
 query_params = st.query_params
 
 if "code" in query_params and "google_credentials" not in st.session_state:
     try:
-        # Usamos la función que ya tenemos en Core
         flow = crear_flujo_oauth()
-        # Intercambiamos el código de la URL por el token real
         flow.fetch_token(code=query_params["code"])
         creds = flow.credentials
-        
-        # Guardamos las credenciales en la sesión para que el Dashboard las vea
         st.session_state.google_credentials = {
             "token": creds.token,
             "refresh_token": creds.refresh_token,
@@ -44,12 +66,75 @@ if "code" in query_params and "google_credentials" not in st.session_state:
             "client_secret": creds.client_secret,
             "scopes": creds.scopes
         }
-        # Limpiamos la URL para que no quede el "code=..." a la vista
         st.query_params.clear()
         st.rerun()
     except Exception as e:
         st.error(f"Error al procesar el acceso de Google: {e}")
-# -----------------------------------------------------
+
+# -------------------------------------------------------------------------
+# 🔌 RADARES DE MERCADO PAGO (VINCULACIÓN + PAGOS)
+# -------------------------------------------------------------------------
+
+# 1. RADAR PARA VINCULAR LA CUENTA DEL DOCTOR (Viene del botón azul)
+if "code" in query_params and st.session_state.get("logged_in"):
+    mp_code = query_params.get("code")
+    # Si el código NO es de Google (que empiezan con 4/), entonces es de MP
+    if mp_code and not mp_code.startswith("4/"):
+        try:
+            import requests
+            from Core.database import guardar_credenciales_mp
+            
+            url_mp = "https://api.mercadopago.com/oauth/token"
+            payload = {
+                "client_id": st.secrets["ML_CLIENT_ID"],
+                "client_secret": st.secrets["ML_CLIENT_SECRET"],
+                "grant_type": "authorization_code",
+                "code": mp_code,
+                "redirect_uri": "https://www.odontostream.com.ar/"
+            }
+            res = requests.post(url_mp, data=payload).json()
+            
+            if "access_token" in res:
+                guardar_credenciales_mp(
+                    user_id=st.session_state.odontologo_id,
+                    access_token=res["access_token"],
+                    public_key=res["public_key"],
+                    refresh_token=res.get("refresh_token")
+                )
+                st.success("¡Cuenta de Mercado Pago vinculada!")
+                st.balloons()
+                st.query_params.clear()
+                st.rerun()
+        except Exception as e:
+            st.error(f"Error al vincular cuenta: {e}")
+
+# 2. RADAR DE PAGO EXITOSO (Viene de un paciente que pagó un turno)
+if "pago" in query_params and query_params["pago"] == "exitoso":
+    try:
+        st.balloons()
+        st.success("¡Pago recibido correctamente! Agendando tu turno...")
+        datos_pendientes = st.session_state.get("datos_turno_pendiente")
+        id_doc = st.session_state.get("odontologo_id_actual")
+
+        if datos_pendientes:
+            from Core.database import guardar_turno, registrar_pago
+            guardar_turno(datos_pendientes)
+            
+            precio = st.session_state.get("precio_consulta", 30000)
+            registrar_pago({
+                "odontologo_id": id_doc,
+                "monto": precio,
+                "comision": precio * 0.05,
+                "paciente": datos_pendientes.get("paciente_nombre")
+            })
+            
+            del st.session_state["datos_turno_pendiente"]
+            st.query_params.clear()
+            st.info("Turno agendado. Ya podés volver al chat.")
+    except Exception as e:
+        st.error(f"Hubo un drama al registrar el pago: {e}")
+
+# --- INYECCIÓN DE CSS PARA OCULTAR MARCAS... (Esto ya lo tenés en la 54)
 
 # --- INYECCIÓN DE CSS PARA OCULTAR MARCAS DE STREAMLIT Y LIMPIAR LA INTERFAZ ---
 st.markdown("""

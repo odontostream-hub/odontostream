@@ -76,3 +76,66 @@ def verificar_disponibilidad(fecha, hora):
     response = supabase.table("turnos").select("*")\
         .eq("fecha", fecha).eq("hora", hora).execute()
     return len(response.data) == 0
+
+def registrar_pago(datos_pago):
+    """Guarda el registro del pago exitoso en la tabla 'pagos'."""
+    data = {
+        "odontologo_id": datos_pago.get("odontologo_id"),
+        "monto_total": datos_pago.get("monto"),
+        "comision_monto": datos_pago.get("comision"),
+        "estado": "aprobado",
+        "paciente_nombre": datos_pago.get("paciente")
+    }
+    # Asegurate de tener creada la tabla 'pagos' en Supabase
+    response = supabase.table("pagos").insert(data).execute()
+    return response
+
+def guardar_credenciales_mp(user_id, mp_access_token, public_key=None, refresh_token=None):
+    """Guarda o actualiza las credenciales de Mercado Pago de un odontólogo."""
+    
+    # Armamos el paquete de datos
+    data = {
+        "user_id": user_id,  # Este es el ID que Supabase usa para saber DE QUIÉN es el token
+        "mp_access_token": mp_access_token,
+        "public_key": public_key,
+        "refresh_token": refresh_token
+    }
+
+    try:
+        # El upsert necesita que 'user_id' sea una clave única en tu tabla de Supabase
+        # Si ya existe el user_id, pisa el token viejo con el nuevo.
+        response = supabase.table("credenciales_mercadopago").upsert(
+            data, 
+            on_conflict="user_id"
+            ).execute()
+        return response
+    except Exception as e:
+        st.error(f"Error al guardar en Supabase: {str(e)}")
+        return None
+
+    # Usamos upsert para que si ya existe el user_id, lo actualice en vez de crear otro
+    response = supabase.table("credenciales_mercadopago").upsert(data, on_conflict="user_id").execute()
+    return response
+
+    def eliminar_cuenta_completa(odontologo_id):
+        """
+        Elimina toda la información de un odontólogo de todas las tablas.
+        ¡Acción irreversible!
+        """
+        # Lista de tablas a limpiar
+        tablas = [
+            "precios_odontologo", 
+            "credenciales_mercadopago", 
+            "pacientes", 
+            "pagos", 
+            "odontologo"
+        ]
+    
+    try:
+        for tabla in tablas:
+            # Ejecutamos el borrado donde coincida el ID del odontólogo
+            supabase.table(tabla).delete().eq("odontologo_id", odontologo_id).execute()
+        
+        return True, "Cuenta eliminada con éxito de todos los registros."
+    except Exception as e:
+        return False, f"Error al intentar borrar la cuenta: {str(e)}"

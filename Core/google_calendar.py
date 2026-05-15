@@ -14,7 +14,7 @@ def crear_flujo_oauth():
     client_secret = st.secrets["google_oauth"]["client_secret"]
     
     # IMPORTANTE: Aquí usamos tu dominio real para que Google lo acepte
-    redirect_uri = "https://odontostream.com.ar"
+    redirect_uri = "https://www.odontostream.com.ar/"
 
     client_config = {
         "web": {

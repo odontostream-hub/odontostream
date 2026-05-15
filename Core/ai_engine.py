@@ -6,18 +6,58 @@ from groq import Groq
 from dotenv import load_dotenv
 # --- IMPORTAMOS TU LÓGICA DE GOOGLE ---
 from Core.google_calendar import listar_proximos_eventos
+# --- IMPORTAMOS TU NUEVA LÓGICA DE ENTORNO ---
+from Config.entorno import obtener_back_urls
 
 load_dotenv()
 
 class DentalAI:
     def __init__(self, supabase_client=None):
-        self.client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        # 1. Busca la llave principal en el .env (Local) o Secrets (Nube)
+        self.key1 = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY")
+        
+        # 2. Busca la llave de RESPALDO en el secrets.toml (Ya no está a la vista acá)
+        self.key2 = st.secrets.get("GROQ_API_KEY_2")
+        
+        # Cliente principal
+        self.client = Groq(api_key=self.key1)
+        
+        # TUS MODELOS ORIGINALES (Intactos)
         self.text_model = "llama-3.1-8b-instant"
         self.vision_model = "meta-llama/llama-4-scout-17b-16e-instruct"
-        self.supabase = supabase_client
         
+        self.supabase = supabase_client
         self.mp_access_token = os.getenv("MERCADOPAGO_ACCESS_TOKEN")
         self.sdk = mercadopago.SDK(self.mp_access_token) if self.mp_access_token else None
+
+    def _request_with_failover(self, model, messages, temperature):
+        """ESTE ES EL RESPALDO: Si falla la primera, usa la segunda API automáticamente"""
+        try:
+            return self.client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature
+            )
+        except Exception as e:
+            print(f"⚠️ Falló API 1: {e}. Saltando al tanque de reserva...")
+            # Si key2 existe en secrets, lo usa. Si no, tirará el error correspondiente.
+            backup_client = Groq(api_key=self.key2)
+            return backup_client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature
+            )
+
+    def obtener_token_odontologo(self, odontologo_id):
+        if not self.supabase or not odontologo_id:
+            return st.secrets.get("MP_ACCESS_TOKEN")
+        try:
+            res = self.supabase.table("credenciales_mercadopago").select("access_token").eq("user_id", odontologo_id).execute()
+            if res.data:
+                return res.data[0]["access_token"]
+        except Exception as e:
+            print(f"Error: {e}")
+        return st.secrets.get("MP_ACCESS_TOKEN")
 
     def obtener_precio_odontologo(self, odontologo_id):
         precio_default = 1000.0 
@@ -46,33 +86,29 @@ class DentalAI:
             return None
 
     def crear_link_pago_turno(self, motivo, paciente_nombre, odontologo_id):
-        if not self.sdk: return None, 0.0
-        
-        # 1. Traemos el precio REAL que el odontólogo cargó en el Panel Admin
+        token_doc = self.obtener_token_odontologo(odontologo_id)
+        sdk_dinamico = mercadopago.SDK(token_doc) 
         precio_total = self.obtener_precio_odontologo(odontologo_id)
+        mi_comision = precio_total * 0.05
         
-        # 2. Calculamos la comisión (El 5% que es para vos)
-        # Podés cobrar el total o solo la seña, pero acá usamos el precio del doc
+        # USAMOS LAS URLS DINÁMICAS SEGÚN EL ENTORNO
+        urls_dinamicas = obtener_back_urls()
+        
         try:
             preference_data = {
                 "items": [
                     {
                         "title": f"Turno {motivo}: {paciente_nombre}",
                         "quantity": 1,
-                        "unit_price": precio_total, # El precio que puso el Doc
+                        "unit_price": precio_total, 
                         "currency_id": "ARS"
                     }
                 ],
-                "back_urls": {
-                    "success": "https://odontostream.com.ar/?pago=exitoso",
-                    "failure": "https://odontostream.com.ar/?pago=fallido",
-                    "pending": "https://odontostream.com.ar/?pago=pendiente"
-                },
+                "marketplace_fee": mi_comision,
+                "back_urls": urls_dinamicas,
                 "auto_return": "approved",
-                # Aquí podrías configurar la división de pagos si usás Mercado Pago Marketplace
-                # O simplemente recibir vos el total y después liquidar.
             }
-            res = self.sdk.preference().create(preference_data)
+            res = sdk_dinamico.preference().create(preference_data)
             return res["response"].get("init_point"), precio_total
         except:
             return None, precio_total
@@ -82,8 +118,6 @@ class DentalAI:
             # 1. LEER GOOGLE CALENDAR REAL
             contexto_agenda = "Horarios ya ocupados en Google Calendar:\n"
             try:
-                # Importamos acá por si las dudas
-                from Core.google_calendar import listar_proximos_eventos
                 eventos = listar_proximos_eventos(max_results=10)
                 if eventos:
                     for ev in eventos:
@@ -94,55 +128,57 @@ class DentalAI:
             except:
                 contexto_agenda += "No pude acceder al calendario.\n"
 
-            # 2. GENERAR LINK DE PAGO
-            # Sacamos la localidad de kwargs (si no está, ponemos Buenos Aires o la que quieras)
-            localidad = kwargs.get("localidad_paciente", "Buenos Aires")
+            # 2. GENERAR LINK DE PAGO DINÁMICO
+            id_final = odontologo_id or st.session_state.get("odontologo_id", "ID_GENERAL")
             
-            # ¡ACÁ ESTABA EL ERROR! Le faltaba pasar el odontologo_id
-            # Si odontologo_id viene vacío, le mandamos un valor por defecto para que no explote
-            id_final = odontologo_id if odontologo_id else "ID_GENERAL"
+            try:
+                monto_turno = self.obtener_precio_odontologo(id_final)
+                token_del_doc = self.obtener_token_odontologo(id_final)
+                mi_comision = monto_turno * 0.05
+                sdk_dinamico = mercadopago.SDK(token_del_doc) if token_del_doc else self.sdk
+                
+                # USAMOS LAS URLS DINÁMICAS ACÁ TAMBIÉN
+                urls_dinamicas = obtener_back_urls()
+                
+                preference_data = {
+                    "items": [{"title": f"Seña de Consulta - {odontologo_nombre}", "quantity": 1, "unit_price": float(monto_turno), "currency_id": "ARS"}],
+                    "marketplace_fee": mi_comision, 
+                    "back_urls": urls_dinamicas, 
+                    "auto_return": "approved",
+                }
+                preference_response = sdk_dinamico.preference().create(preference_data)
+                link_pago = preference_response["response"].get("init_point", "Error link")
+            except Exception as e:
+                print(f"Error Mercado Pago: {e}")
+                link_pago = "Error al generar link"
             
-            link_pago, precio = self.crear_link_pago_turno("Consulta", "Paciente", id_final)
+            # 3. LLAMADA AL MODELO CON RESPALDO
+            messages = [
+                {"role": "system", "content": f"Sos un asistente dental experto de {odontologo_nombre}. Link de pago: {link_pago}"}, 
+                {"role": "user", "content": user_input}
+            ]
+            
+            chat = self._request_with_failover(self.text_model, messages, 0.7)
 
-            # SYSTEM PROMPT MEJORADO
-            system_prompt = (
-                f"Eres la secretaria estrella de Odonto-Stream para el Dr/a. {odontologo_nombre}.\n"
-                f"Ubicación del consultorio: {localidad}.\n\n"
-                f"TU MISIÓN: Agendar turnos pidiendo DNI, Nombre y Teléfono.\n\n"
-                f"ESTADO REAL DE LA AGENDA (No ofrezcas estos horarios):\n{contexto_agenda}\n"
-                f"INSTRUCCIONES CRÍTICAS:\n"
-                f"1. Pide DNI, Nombre y Teléfono si no los tienes.\n"
-                f"2. Cuando el paciente elija un horario LIBRE, confírmalo y dile que debe pagar la seña de ${precio}.\n"
-                f"3. ENTREGA ESTE LINK DE PAGO ÚNICAMENTE CUANDO EL PACIENTE ESTÉ LISTO PARA PAGAR: {link_pago}\n"
-                f"4. Mantén el tono ejecutivo, profesional y muy cercano."
-            )
+            st.session_state["datos_turno_pendiente"] = {"paciente_nombre": "Paciente Temporal", "motivo": "Consulta"}
+            st.session_state["odontologo_id_actual"] = id_final
             
-            # 3. LLAMADA AL MODELO (Asegúrate de que self.client esté bien inicializado con la API KEY)
-            chat = self.client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": system_prompt}, 
-                    {"role": "user", "content": user_input}
-                ],
-                model=self.text_model,
-                temperature=0.7
-            )
             return chat.choices[0].message.content
 
         except Exception as e:
-            # Esto te va a decir exactamente qué falló en la consola
             print(f"DEBUG ERROR: {str(e)}")
-            return f"Lo siento, Mani, hubo un error en mi motor: {str(e)}"
+            return f"Error en mi motor: {str(e)}"
 
     def analizar_caries(self, uploaded_file):
         try:
             if not uploaded_file: return "No hay imagen."
             base64_image = base64.b64encode(uploaded_file.getvalue()).decode("utf-8")
-            vision_prompt = "Analiza esta imagen dental y busca caries o anomalías. Estructura: 1. Hallazgos, 2. Sospechas, 3. Especialista recomendado, 4. Consejo. Añade descargo legal."
-            response = self.client.chat.completions.create(
-                model=self.vision_model,
-                messages=[{"role": "user", "content": [{"type": "text", "text": vision_prompt}, {"type": "image_url", "image_url": {"url": f"data:{uploaded_file.type};base64,{base64_image}"}}]}],
-                temperature=0.2
-            )
+            vision_prompt = "Analiza esta imagen dental y busca caries."
+            messages = [{"role": "user", "content": [{"type": "text", "text": vision_prompt}, {"type": "image_url", "image_url": {"url": f"data:{uploaded_file.type};base64,{base64_image}"}}]} ]
+            
+            # LLAMADA A VISIÓN CON RESPALDO
+            response = self._request_with_failover(self.vision_model, messages, 0.2)
+            
             return response.choices[0].message.content
         except Exception as e:
             return f"Error Visión: {str(e)}"

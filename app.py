@@ -6,20 +6,28 @@ import pandas as pd
 import datetime
 import mercadopago
 
-# --- BLOQUE PARA ELIMINAR INTERFAZ DE STREAMLIT ---
+# --- BLOQUE ANNIHILADOR TOTAL (COMPU Y CELULAR) ---
 st.markdown("""
     <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    /* Esto elimina el toolbar de arriba (botón rojo y demás) */
+    /* 1. Ocultar interfaz genérica */
+    #MainMenu {visibility: hidden !important;}
+    footer {visibility: hidden !important;}
+    header {visibility: hidden !important;}
     [data-testid="stToolbar"] {visibility: hidden !important;}
-    /* Esto elimina la decoración de la línea superior */
     [data-testid="stDecoration"] {visibility: hidden !important;}
-    /* Esto elimina el widget de estado (el círculo que carga) */
     [data-testid="stStatusWidget"] {visibility: hidden !important;}
-    /* Esto asegura que el cliente no pueda scrollear hacia arriba a un espacio vacío */
-    .stAppDeployButton {display:none;}
+    .stAppDeployButton {display: none !important;}
+    
+    /* 2. El truco para celulares (Elimina el maldito botón rojo flotante abajo a la derecha) */
+    div[class*="viewerBadge"] {display: none !important;}
+    span[class*="viewerBadge"] {display: none !important;}
+    
+    /* 3. Ajuste forzado para la versión móvil de Streamlit Cloud */
+    a[href*="streamlit.io"] {display: none !important;}
+    div[data-at-shortcut] {display: none !important;}
+    
+    /* 4. Quitar el espacio vacío que deja el menú oculto en el celular */
+    .stAppHeader {display: none !important;}
     </style>
     """, unsafe_allow_html=True)
 

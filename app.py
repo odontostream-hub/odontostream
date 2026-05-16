@@ -6,6 +6,23 @@ import pandas as pd
 import datetime
 import mercadopago
 
+# --- BLOQUE PARA ELIMINAR INTERFAZ DE STREAMLIT ---
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    /* Esto elimina el toolbar de arriba (botón rojo y demás) */
+    [data-testid="stToolbar"] {visibility: hidden !important;}
+    /* Esto elimina la decoración de la línea superior */
+    [data-testid="stDecoration"] {visibility: hidden !important;}
+    /* Esto elimina el widget de estado (el círculo que carga) */
+    [data-testid="stStatusWidget"] {visibility: hidden !important;}
+    /* Esto asegura que el cliente no pueda scrollear hacia arriba a un espacio vacío */
+    .stAppDeployButton {display:none;}
+    </style>
+    """, unsafe_allow_html=True)
+
 # --- INICIALIZACIÓN DE MERCADO PAGO ---
 # Usamos session_state para que el estado de conexión sea visible en toda la app
 if "mp_conectado" not in st.session_state:

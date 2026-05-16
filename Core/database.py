@@ -1,9 +1,10 @@
+import os
 import streamlit as st
 from supabase import create_client, Client
 
-# Configuración de Supabase
-URL = st.secrets.get("SUPABASE_URL") or 'https://qbatisfjuuglmpmtndbu.supabase.co'
-KEY = st.secrets.get("SUPABASE_KEY") or 'sb_publishable_JNOh8O85RQMvC4npma9CxQ_FutqE3nX'
+# Configuración de Supabase (Busca primero en Render y si no está, en Streamlit)
+URL = os.environ.get("SUPABASE_URL") or st.secrets.get("SUPABASE_URL") or 'https://qbatisfjuuglmpmtndbu.supabase.co'
+KEY = os.environ.get("SUPABASE_KEY") or st.secrets.get("SUPABASE_KEY") or 'sb_publishable_JNOh8O85RQMvC4npma9CxQ_FutqE3nX'
 
 supabase: Client = create_client(URL, KEY)
 

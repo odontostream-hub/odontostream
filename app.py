@@ -5,24 +5,6 @@ import streamlit as st
 import pandas as pd
 import datetime
 import mercadopago
-import streamlit.components.v1 as components
-
-# --- EL DEMOLEDOR ABSOLUTO DE MARCAS (COMPU Y CELULAR) ---
-components.html("""
-<script>
-    // Este script corre adentro del iframe y limpia todo desde la raíz
-    const eliminarCartel = () => {
-        // Busca en la pantalla de la compu y del celu
-        const elementos = window.parent.document.querySelectorAll(
-            '[class*="viewerBadge"], [data-testid="stToolbar"], footer, header, .stAppDeployButton, a[href*="streamlit.io"]'
-        );
-        elementos.forEach(el => el.style.display = 'none', el.style.visibility = 'hidden');
-    };
-
-    // Corre el limpiador cada 200 milisegundos para que no aparezca nunca
-    setInterval(eliminarCartel, 200);
-</script>
-""", height=0, width=0)
 
 # --- INICIALIZACIÓN DE MERCADO PAGO ---
 # Usamos session_state para que el estado de conexión sea visible en toda la app
@@ -52,18 +34,33 @@ st.set_page_config(
 )
 st.markdown("""
     <style>
-    /* Chau al botón rojo y al texto de abajo */
+    /* Oculta el menú de tres puntos arriba a la derecha */
+    #MainMenu {visibility: hidden;}
+    
+    /* Oculta la barra de estado de Streamlit abajo de todo */
     footer {visibility: hidden;}
     
-    /* Chau al botón de 'Deploy' que aparece arriba a veces */
-    .stAppDeployButton {display: none;}
+    /* Oculta el botón rojo de Deploy de arriba */
+    .stAppDeployButton {display: none !important;}
     
-    /* Chau a la barra de arriba para que no robe espacio */
+    /* Oculta la barra superior de color por defecto */
     header {visibility: hidden;}
     
-    /* Ajuste para que el contenido empiece bien arriba */
+    /* Elimina el espacio vacío superior para que empiece bien arriba */
     .block-container {
-        padding-top: 0rem;
+        padding-top: 0rem !important;
+        padding-bottom: 2rem;
+    }
+    
+    /* Estilizado premium para los botones principales */
+    .stButton>button {
+        border-radius: 8px;
+        transition: all 0.3s ease;
+    }
+    .stButton>button:hover {
+        border-color: #00a8cc;
+        color: #00a8cc;
+        box-shadow: 0 4px 12px rgba(0, 168, 204, 0.15);
     }
     </style>
     """, unsafe_allow_html=True)

@@ -5,41 +5,24 @@ import streamlit as st
 import pandas as pd
 import datetime
 import mercadopago
+import streamlit.components.v1 as components
 
-# --- PARCHE NUCLEAR PARA CELULARES (CSS + JS) ---
-st.markdown("""
-    <style>
-    #MainMenu {visibility: hidden !important;}
-    footer {visibility: hidden !important;}
-    header {visibility: hidden !important;}
-    [data-testid="stToolbar"] {visibility: hidden !important;}
-    [data-testid="stDecoration"] {visibility: hidden !important;}
-    [data-testid="stStatusWidget"] {visibility: hidden !important;}
-    .stAppDeployButton {display: none !important;}
-    div[class*="viewerBadge"] {display: none !important;}
-    span[class*="viewerBadge"] {display: none !important;}
-    a[href*="streamlit.io"] {display: none !important;}
-    </style>
-    
-    <script>
-    // Este script corre en bucle buscando la marca de agua para borrarla
-    const buster = setInterval(() => {
-        // Busca cualquier elemento que tenga la clase del badge
-        const badges = document.querySelectorAll('[class*="viewerBadge"]');
-        badges.forEach(b => b.remove());
-        
-        // Busca enlaces a streamlit
-        const links = document.querySelectorAll('a[href*="streamlit.io"]');
-        links.forEach(l => {
-            const parent = l.closest('div');
-            if(parent) parent.remove();
-            l.remove();
-        });
-    }, 500);
-    // Se detiene a los 10 segundos para no consumir batería
-    setTimeout(() => clearInterval(buster), 10000);
-    </script>
-    """, unsafe_allow_html=True)
+# --- EL DEMOLEDOR ABSOLUTO DE MARCAS (COMPU Y CELULAR) ---
+components.html("""
+<script>
+    // Este script corre adentro del iframe y limpia todo desde la raíz
+    const eliminarCartel = () => {
+        // Busca en la pantalla de la compu y del celu
+        const elementos = window.parent.document.querySelectorAll(
+            '[class*="viewerBadge"], [data-testid="stToolbar"], footer, header, .stAppDeployButton, a[href*="streamlit.io"]'
+        );
+        elementos.forEach(el => el.style.display = 'none', el.style.visibility = 'hidden');
+    };
+
+    // Corre el limpiador cada 200 milisegundos para que no aparezca nunca
+    setInterval(eliminarCartel, 200);
+</script>
+""", height=0, width=0)
 
 # --- INICIALIZACIÓN DE MERCADO PAGO ---
 # Usamos session_state para que el estado de conexión sea visible en toda la app

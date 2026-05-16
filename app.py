@@ -6,10 +6,9 @@ import pandas as pd
 import datetime
 import mercadopago
 
-# --- BLOQUE ANNIHILADOR TOTAL (COMPU Y CELULAR) ---
+# --- PARCHE NUCLEAR PARA CELULARES (CSS + JS) ---
 st.markdown("""
     <style>
-    /* 1. Ocultar interfaz genérica */
     #MainMenu {visibility: hidden !important;}
     footer {visibility: hidden !important;}
     header {visibility: hidden !important;}
@@ -17,18 +16,29 @@ st.markdown("""
     [data-testid="stDecoration"] {visibility: hidden !important;}
     [data-testid="stStatusWidget"] {visibility: hidden !important;}
     .stAppDeployButton {display: none !important;}
-    
-    /* 2. El truco para celulares (Elimina el maldito botón rojo flotante abajo a la derecha) */
     div[class*="viewerBadge"] {display: none !important;}
     span[class*="viewerBadge"] {display: none !important;}
-    
-    /* 3. Ajuste forzado para la versión móvil de Streamlit Cloud */
     a[href*="streamlit.io"] {display: none !important;}
-    div[data-at-shortcut] {display: none !important;}
-    
-    /* 4. Quitar el espacio vacío que deja el menú oculto en el celular */
-    .stAppHeader {display: none !important;}
     </style>
+    
+    <script>
+    // Este script corre en bucle buscando la marca de agua para borrarla
+    const buster = setInterval(() => {
+        // Busca cualquier elemento que tenga la clase del badge
+        const badges = document.querySelectorAll('[class*="viewerBadge"]');
+        badges.forEach(b => b.remove());
+        
+        // Busca enlaces a streamlit
+        const links = document.querySelectorAll('a[href*="streamlit.io"]');
+        links.forEach(l => {
+            const parent = l.closest('div');
+            if(parent) parent.remove();
+            l.remove();
+        });
+    }, 500);
+    // Se detiene a los 10 segundos para no consumir batería
+    setTimeout(() => clearInterval(buster), 10000);
+    </script>
     """, unsafe_allow_html=True)
 
 # --- INICIALIZACIÓN DE MERCADO PAGO ---
